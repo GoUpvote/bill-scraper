@@ -2,6 +2,7 @@ import base64
 import logging
 import aiohttp
 from bs4 import BeautifulSoup
+from app.services.slack_service import SlackService
 import asyncio
 from typing import List, Optional
 from app.schemas.bill_schemas import BillResponse
@@ -247,6 +248,11 @@ class BillService:
                         except Exception as e:
                             error_count += 1
                             logger.error(f"Error submitting bill {bill_number}: {str(e)}")
+
+            await SlackService.notify_bill_processing(
+                total_bills=len(bills),
+                new_bills=[b for b in new_bills if b in [bill.bill_number for bill in bills]]
+            )
 
             logger.info(f"=== Bill processing complete ===")
             logger.info(f"Summary: {success_count} bills submitted successfully, {error_count} failures")
