@@ -1,8 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1 import billbook
+from app.scheduler import start_scheduler
 
 app = FastAPI(title="Bill Scraper API")
+
+@app.on_event("startup")
+async def startup_event():
+    start_scheduler()
 
 # Configure CORS
 app.add_middleware(

@@ -34,15 +34,13 @@ def get_bill_html(bill_number):
     try:
         response = requests.get(url, headers=headers)
         
-        # Check if the page exists (404 means it doesn't exist)
         if response.status_code == 404:
             print(f"Bill {bill_number} not found (404)")
             return None
             
         response.raise_for_status()
         
-        # Check if the response is empty or too short to be valid
-        if len(response.text) < 100:  # Arbitrary minimum length for a valid bill
+        if len(response.text) < 50:
             print(f"Bill {bill_number} returned empty or invalid content")
             return None
             
@@ -69,7 +67,6 @@ def convert_to_markdown(html_content):
         return None
 
 def scrape_bills():
-    # Create bills directory if it doesn't exist
     os.makedirs("bills", exist_ok=True)
     
     url = "https://www.legis.iowa.gov/legislation/billTracking/billpacket"
@@ -88,21 +85,16 @@ def scrape_bills():
                 bill_number = link.text.strip().replace(" ", "")
                 print(f"Fetching bill: {bill_number}")
                 
-                # Get the bill HTML
                 bill_html = get_bill_html(bill_number)
                 if bill_html:
-                    # Convert HTML to markdown
                     base64_html = convert_to_base64(bill_html)
                     markdown_text = convert_to_markdown(base64_html)
                     if markdown_text:
-                        # Save only the markdown text
                         with open(f"bills/{bill_number}.txt", "w", encoding="utf-8") as f:
                             f.write(markdown_text)
                         print(f"Saved bill {bill_number} text")
                     else:
                         print(f"Failed to convert bill {bill_number} to markdown")
-                
-                # Add a small delay between requests to be polite
                 time.sleep(1)
                 
     except requests.RequestException as e:
