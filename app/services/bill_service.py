@@ -21,9 +21,10 @@ class BillService:
     async def get_bill_html(session: aiohttp.ClientSession, bill_number: str) -> Optional[str]:
         url = f"https://www.legis.iowa.gov/docs/publications/LGI/91/attachments/{bill_number}.html?layout=false"
         headers = get_bill_headers(bill_number)
+        proxy = os.getenv("QUOTAGUARDSTATIC_URL")
         
         try:
-            async with session.get(url, headers=headers) as response:
+            async with session.get(url, headers=headers, proxy=proxy) as response:
                 if response.status == 404:
                     logger.warning(f"Bill {bill_number} not found (404)")
                     return None
@@ -115,13 +116,15 @@ class BillService:
             return None
 
         convert_endpoint = f"{formatter_api_url}/api/v1/bill-text/convert"
+        proxy = os.getenv("QUOTAGUARDSTATIC_URL")
         
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     convert_endpoint,
                     json={"html_content_base64": base64_html},
-                    headers={"Content-Type": "application/json"}
+                    headers={"Content-Type": "application/json"},
+                    proxy=proxy
                 ) as response:
                     response.raise_for_status()
                     result = await response.json()

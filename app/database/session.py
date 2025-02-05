@@ -16,10 +16,6 @@ connect_args = {
     'connect_timeout': 60,
 }
 
-# Add proxy settings if FIXIE is configured
-if settings.proxy_url:
-    connect_args['proxy'] = settings.proxy_url
-
 DATABASE_URL = f"postgresql://{settings.DB_USER}:{quote_plus(settings.DB_PASSWORD)}@{settings.DB_HOST}/{settings.DB_NAME}"
 
 engine = create_engine(
