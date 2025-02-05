@@ -18,7 +18,7 @@ def run_process_bills():
     asyncio.run(process_bills())
 
 def start():
-    scheduler.add_job(run_process_bills, 'interval', minutes=30)
+    scheduler.add_job(run_process_bills, 'interval', minutes=15)
     try:
         scheduler.start()
     except (KeyboardInterrupt, SystemExit):

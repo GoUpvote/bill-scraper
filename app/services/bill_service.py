@@ -13,6 +13,9 @@ from app.models import LegiscanBill, LegiscanSession
 from sqlalchemy import and_
 from datetime import date
 from app.services.session_service import SessionService
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -170,41 +173,68 @@ class BillService:
     @staticmethod
     async def check_for_bills(bill_numbers: List[str], session_id: int, state_code: str) -> List[str]:
         """
-        Checks which bills don't exist in the database for a given session and state
-        
-        Args:
-            bill_numbers: List of bill numbers to check
-            session_id: The legislative session ID
-            state_code: The state code (e.g., 'IA')
-            
-        Returns:
-            List[str]: List of bill numbers that don't exist in the database
+        Uses the Upvote API endpoint to check which bills don't exist in Upvote (i.e. are new).
+        It returns a list of bill numbers that are missing.
         """
-        try:
-            with get_db() as db:
-                existing_bills = db.query(LegiscanBill.current_bill_number)\
-                    .join(LegiscanSession, LegiscanBill.legiscan_session_id == LegiscanSession.id)\
-                    .filter(
-                        and_(
-                            LegiscanSession.session_id == session_id,
-                            LegiscanSession.state_code == state_code,
-                            LegiscanBill.current_bill_number.in_(bill_numbers)
-                        )
-                    ).all()
-                
-                existing_bill_numbers = [bill.current_bill_number for bill in existing_bills]
-                
-                new_bills = [bill for bill in bill_numbers if bill not in existing_bill_numbers]
-                
-                logger.info(f"Found {len(new_bills)} new bills out of {len(bill_numbers)} total bills")
-                return new_bills
-                
-        except Exception as e:
-            logger.error(f"Error checking for existing bills: {str(e)}")
-            raise
+        upvote_api_url = os.getenv('UPVOTE_API_BASE_URL')
+        upvote_api_key = os.getenv('UPVOTE_API_KEY')
+        uid = os.getenv("UID")
+        access_token = os.getenv("ACCESS_TOKEN")
+        client = os.getenv("CLIENT")
+        if not upvote_api_url or not upvote_api_key or not uid or not access_token or not client:
+            logger.error("Upvote API configuration is missing in environment variables")
+            # If configuration is missing, assume all bills are new
+            return bill_numbers
+
+        tasks = []
+        async with aiohttp.ClientSession() as http_session:
+            for bill_number in bill_numbers:
+                tasks.append(BillService.async_check_bill_exists(
+                    http_session,
+                    state_code,
+                    session_id,
+                    bill_number,
+                    upvote_api_url,
+                    upvote_api_key,
+                    uid,
+                    access_token,
+                    client
+                ))
+            results = await asyncio.gather(*tasks)
         
-    #legible/filters/state
-    #search endpoint
+        missing_bills = []
+        for bill_number, result in zip(bill_numbers, results):
+            exists = False
+            if result and isinstance(result, dict):
+                # Check if the bill exists by verifying count is greater than zero.
+                exists = result.get("count", 0) > 0
+            if not exists:
+                missing_bills.append(bill_number)
+        logger.info(f"Found {len(missing_bills)} new bills out of {len(bill_numbers)} checked via Upvote API")
+        return missing_bills
+
+    @staticmethod
+    async def async_check_bill_exists(http_session: aiohttp.ClientSession, state_code: str, session_id: int, bill_number: str,
+                                      upvote_api_url: str, upvote_api_key: str, uid: str, access_token: str, client: str):
+        endpoint = f"{upvote_api_url}/legible/filters/state"
+        params = {
+            "state_code": state_code,
+            "session_id": session_id,
+            "query": bill_number
+        }
+        headers = {
+            "Authorization": f"Bearer {upvote_api_key}",
+            "uid": uid,
+            "access_token": access_token,
+            "client": client
+        }
+        try:
+            async with http_session.get(endpoint, params=params, headers=headers) as response:
+                response.raise_for_status()
+                return await response.json()
+        except Exception as e:
+            logger.error(f"Error checking bill {bill_number} existence via API: {str(e)}")
+            return None
 
     @staticmethod
     async def process_new_bills():
