@@ -3,6 +3,7 @@ from typing import Optional
 import os
 from dotenv import load_dotenv
 from pydantic import Field, validator
+import urllib.parse
 
 load_dotenv()
 
@@ -13,7 +14,19 @@ class DatabaseSettings(BaseSettings):
     DB_PASSWORD: str = Field(alias="DATABASE_PASSWORD")
     DB_NAME: str = Field(alias="DATABASE_NAME")
     DB_PORT: int = Field(alias="DATABASE_PORT")
+    FIXIE_URL: Optional[str] = Field(None, alias="FIXIE_SOCKS_HOST")
     
+    @property
+    def proxy_url(self) -> Optional[str]:
+        if not self.FIXIE_URL:
+            return None
+        # Convert SOCKS URL to proper format
+        # From: 'fixie:pass@speedway.usefixie.com:1080'
+        # To: 'socks5h://fixie:pass@speedway.usefixie.com:1080'
+        if self.FIXIE_URL.startswith("fixie:"):
+            return f"socks5h://{self.FIXIE_URL}"
+        return self.FIXIE_URL
+
     @validator('DB_HOST')
     def validate_host(cls, v):
         if '172.31' in v:

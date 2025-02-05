@@ -7,10 +7,20 @@ import logging
 import time
 import socket
 import os
+from urllib.parse import quote_plus
 
 logger = logging.getLogger(__name__)
 
-DATABASE_URL = f"postgresql://{settings.DB_USER}:{settings.DB_PASSWORD}@{settings.DB_HOST}/{settings.DB_NAME}"
+# Create connection arguments
+connect_args = {
+    'connect_timeout': 60,
+}
+
+# Add proxy settings if FIXIE is configured
+if settings.proxy_url:
+    connect_args['proxy'] = settings.proxy_url
+
+DATABASE_URL = f"postgresql://{settings.DB_USER}:{quote_plus(settings.DB_PASSWORD)}@{settings.DB_HOST}/{settings.DB_NAME}"
 
 engine = create_engine(
     DATABASE_URL,
@@ -18,9 +28,7 @@ engine = create_engine(
     pool_size=10,
     max_overflow=20,
     pool_timeout=30,
-    connect_args={
-        'connect_timeout': 60,
-    },
+    connect_args=connect_args,
     echo=True
 )
 max_retries = 3
