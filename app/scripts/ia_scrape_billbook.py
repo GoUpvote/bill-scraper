@@ -30,16 +30,9 @@ def get_bill_html(bill_number):
         'sec-ch-ua-mobile': '?1',
         'sec-ch-ua-platform': '"Android"'
     }
-
-    # Set up the proxies for requests
-    proxy_url = os.getenv("QUOTAGUARDSTATIC_URL")
-    proxies = {
-        "http": proxy_url,
-        "https": proxy_url
-    }
     
     try:
-        response = requests.get(url, headers=headers, proxies=proxies)
+        response = requests.get(url, headers=headers)
         
         if response.status_code == 404:
             print(f"Bill {bill_number} not found (404)")

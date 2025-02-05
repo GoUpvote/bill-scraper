@@ -44,11 +44,18 @@ class BillService:
         return base64.b64encode(html_content.encode()).decode('utf-8')
 
     @staticmethod
-    async def process_bill_results(bills_data: list, bill_numbers: list, results: list, state_links: list) -> List[BillResponse]:
-        for bill_number, html_content, state_link in zip(bill_numbers, results, state_links):
+    async def process_bill_results(
+        bills_data: list,
+        bill_numbers: list,
+        results: list,
+        state_links: list,
+        bill_titles: list
+    ) -> List[BillResponse]:
+        for bill_number, html_content, state_link, bill_title in zip(bill_numbers, results, state_links, bill_titles):
             if html_content:
                 bills_data.append(BillResponse(
                     bill_number=bill_number,
+                    bill_title=bill_title,
                     base64_html=BillService.convert_to_base64(html_content),
                     state_link=state_link
                 ))
@@ -69,27 +76,43 @@ class BillService:
                     content = await response.text()
                     
                     soup = BeautifulSoup(content, 'html.parser')
-                    bill_table = soup.find('table', class_='standard sortable divideVert')
+                    # Get all relevant tables (both "Bills Filed" and "Study Bills Filed")
+                    tables = soup.find_all('table', class_='standard sortable divideVert')
                     
-                    if not bill_table:
-                        logger.error("Could not find bill table in page")
+                    if not tables:
+                        logger.error("Could not find any bill tables in page")
                         return []
                     
-                    bill_links = bill_table.find_all('a')
-                    logger.info(f"Found {len(bill_links)} bills in the table")
-                    
-                    tasks = []
                     bill_numbers = []
                     state_links = []
-                    for link in bill_links:
-                        bill_number = link.text.strip().replace(" ", "")
-                        state_link = f"https://www.legis.iowa.gov/legislation/BillBook?ba={bill_number}&ga=91"
-                        bill_numbers.append(bill_number)
-                        state_links.append(state_link)
-                        tasks.append(BillService.get_bill_html(session, bill_number))
+                    bill_titles = []
+                    tasks = []
+                    
+                    # Iterate over all found tables
+                    for table in tables:
+                        # Loop over the table rows (skip rows containing header cells)
+                        for row in table.find_all('tr'):
+                            if row.find('th'):
+                                continue
+                            cells = row.find_all('td')
+                            if len(cells) < 2:
+                                continue
+                            # Extract bill number from the first column (from the <a> tag)
+                            a_tag = cells[0].find('a')
+                            if not a_tag:
+                                continue
+                            bill_number = a_tag.text.strip().replace(" ", "")
+                            state_link = f"https://www.legis.iowa.gov/legislation/BillBook?ba={bill_number}&ga=91"
+                            # Extract the bill title from the second column
+                            bill_title = cells[1].get_text(separator=" ", strip=True)
+                            
+                            bill_numbers.append(bill_number)
+                            state_links.append(state_link)
+                            bill_titles.append(bill_title)
+                            tasks.append(BillService.get_bill_html(session, bill_number))
                     
                     results = await asyncio.gather(*tasks)
-                    bills_data = await BillService.process_bill_results([], bill_numbers, results, state_links)
+                    bills_data = await BillService.process_bill_results([], bill_numbers, results, state_links, bill_titles)
             
             logger.info(f"Scraping complete. Successfully processed {len(bills_data)} bills")
             return bills_data
@@ -179,6 +202,9 @@ class BillService:
         except Exception as e:
             logger.error(f"Error checking for existing bills: {str(e)}")
             raise
+        
+    #legible/filters/state
+    #search endpoint
 
     @staticmethod
     async def process_new_bills():

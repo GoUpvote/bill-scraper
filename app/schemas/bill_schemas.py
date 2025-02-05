@@ -1,9 +1,10 @@
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 from datetime import date
 
 class BillResponse(BaseModel):
     bill_number: str
+    bill_title: Optional[str] = None
     base64_html: str
     state_link: str
 
