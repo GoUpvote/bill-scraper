@@ -74,7 +74,7 @@ def start():
             run_process_bills,
             'cron',
             day_of_week='mon-thu',
-            hour='16-17',
+            hour='16-18',
             minute='*/10',
             timezone=central
         )
