@@ -7,9 +7,10 @@ logger = logging.getLogger(__name__)
 
 class SlackService:
     @staticmethod
-    async def notify_bill_processing(total_bills: int, new_bills: List[str]):
+    async def notify_bill_processing(total_bills: int, new_bills: List[str], duplicate_count: int):
         """
-        Send a Slack notification about bill processing results
+        Send a Slack notification about bill processing results,
+        including counts for new and duplicate bills.
         """
         webhook_url = os.getenv('SLACK_WEBHOOK_URL')
         if not webhook_url:
@@ -17,9 +18,10 @@ class SlackService:
             return
 
         try:
-            message = f"IA Bill Scraper Execution Complete\n"
+            message = "IA Bill Scraper Execution Complete\n"
             message += f"Total Bills Scanned: {total_bills}\n"
             message += f"New Bills Found: {len(new_bills)}\n"
+            message += f"Duplicate Bills Found: {duplicate_count}\n"
             
             if new_bills:
                 message += "\nNew Bills:\n"

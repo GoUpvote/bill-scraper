@@ -1,8 +1,11 @@
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, ForeignKey, Table, BigInteger
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import relationship
-from app.database.base import Base
 from datetime import datetime
+
+from sqlalchemy.ext.declarative import declarative_base
+
+Base = declarative_base()
 
 class ActiveStorageAttachment(Base):
     __tablename__ = 'active_storage_attachments'

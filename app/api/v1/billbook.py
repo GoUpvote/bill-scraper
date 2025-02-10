@@ -3,7 +3,6 @@ from typing import List
 import logging
 from app.schemas.bill_schemas import BillResponse, BillCheckRequest, BillCheckResponse
 from app.services.bill_service import BillService
-from app.database.config import settings
 from app.services.session_service import SessionService
 
 router = APIRouter()

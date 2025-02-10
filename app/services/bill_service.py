@@ -8,7 +8,6 @@ from typing import List, Optional
 from app.schemas.bill_schemas import BillResponse
 from app.utils.http_utils import DEFAULT_HEADERS, get_bill_headers
 import os
-from app.database.session import get_db
 from app.models import LegiscanBill, LegiscanSession
 from sqlalchemy import and_
 from datetime import date
@@ -24,10 +23,9 @@ class BillService:
     async def get_bill_html(session: aiohttp.ClientSession, bill_number: str) -> Optional[str]:
         url = f"https://www.legis.iowa.gov/docs/publications/LGI/91/attachments/{bill_number}.html?layout=false"
         headers = get_bill_headers(bill_number)
-        proxy = os.getenv("QUOTAGUARDSTATIC_URL")
         
         try:
-            async with session.get(url, headers=headers, proxy=proxy) as response:
+            async with session.get(url, headers=headers) as response:
                 if response.status == 404:
                     logger.warning(f"Bill {bill_number} not found (404)")
                     return None
@@ -126,31 +124,19 @@ class BillService:
 
     @staticmethod
     async def convert_bill_to_markdown(bill_number: str, base64_html: str) -> Optional[dict]:
-        """
-        Converts a bill's HTML content to markdown format using the bill formatter API
-        
-        Args:
-            bill_number: The identifier of the bill
-            base64_html: Base64 encoded HTML content of the bill
-            
-        Returns:
-            Optional[dict]: Dictionary containing bill_number and markdown text, or None if conversion fails
-        """
         formatter_api_url = os.getenv('BILL_FORMATTER_API_BASE_URL')
         if not formatter_api_url:
             logger.error("BILL_FORMATTER_API_BASE_URL environment variable not set")
             return None
 
         convert_endpoint = f"{formatter_api_url}/api/v1/bill-text/convert"
-        proxy = os.getenv("QUOTAGUARDSTATIC_URL")
         
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     convert_endpoint,
                     json={"html_content_base64": base64_html},
-                    headers={"Content-Type": "application/json"},
-                    proxy=proxy
+                    headers={"Content-Type": "application/json"}
                 ) as response:
                     response.raise_for_status()
                     result = await response.json()
@@ -176,21 +162,28 @@ class BillService:
         Uses the Upvote API endpoint to check which bills don't exist in Upvote (i.e. are new).
         It returns a list of bill numbers that are missing.
         """
+        # Force reload environment variables
+        load_dotenv(override=True)
+        
         upvote_api_url = os.getenv('UPVOTE_API_BASE_URL')
         upvote_api_key = os.getenv('UPVOTE_API_KEY')
         uid = os.getenv("UID")
         access_token = os.getenv("ACCESS_TOKEN")
         client = os.getenv("CLIENT")
+        
+        logger.info(f"Using Upvote API URL: {upvote_api_url}")
+        
         if not upvote_api_url or not upvote_api_key or not uid or not access_token or not client:
             logger.error("Upvote API configuration is missing in environment variables")
             # If configuration is missing, assume all bills are new
             return bill_numbers
 
         tasks = []
-        async with aiohttp.ClientSession() as http_session:
+        connector = aiohttp.TCPConnector(ssl=False)
+        async with aiohttp.ClientSession(connector=connector) as session:
             for bill_number in bill_numbers:
                 tasks.append(BillService.async_check_bill_exists(
-                    http_session,
+                    session,
                     state_code,
                     session_id,
                     bill_number,
@@ -206,17 +199,19 @@ class BillService:
         for bill_number, result in zip(bill_numbers, results):
             exists = False
             if result and isinstance(result, dict):
-                # Check if the bill exists by verifying count is greater than zero.
-                exists = result.get("count", 0) > 0
+                # Add detailed logging for debugging
+                logger.info(f"API response for bill {bill_number}: {result}")
+                exists = result.get("count", 0) > 0 and "data" in result
             if not exists:
                 missing_bills.append(bill_number)
+        
         logger.info(f"Found {len(missing_bills)} new bills out of {len(bill_numbers)} checked via Upvote API")
         return missing_bills
 
     @staticmethod
     async def async_check_bill_exists(http_session: aiohttp.ClientSession, state_code: str, session_id: int, bill_number: str,
                                       upvote_api_url: str, upvote_api_key: str, uid: str, access_token: str, client: str):
-        endpoint = f"{upvote_api_url}/legible/filters/state"
+        endpoint = f"{upvote_api_url}/legible/bills/filter"
         params = {
             "state_code": state_code,
             "session_id": session_id,
@@ -229,26 +224,27 @@ class BillService:
             "client": client
         }
         try:
+            logger.info(f"Checking bill {bill_number} with params: {params}")
             async with http_session.get(endpoint, params=params, headers=headers) as response:
                 response.raise_for_status()
-                return await response.json()
+                result = await response.json()
+                return result
         except Exception as e:
             logger.error(f"Error checking bill {bill_number} existence via API: {str(e)}")
+            logger.error(f"Full error details: {type(e).__name__}: {str(e)}")
             return None
 
     @staticmethod
     async def process_new_bills():
         """
-        Automated process to scrape, check, and submit new bills
+        Automated process to scrape, check, and submit new bills.
+        A bill is considered new if it is actually sent (POSTed) to the manual_entry endpoint.
         """
         logger.info("=== Starting bill processing job ===")
         try:
-            logger.info("Step 1/5: Getting latest session ID for Iowa")
-            session_id = SessionService.get_latest_session_id("IA")
-            if not session_id:
-                logger.error("Could not find latest session ID for Iowa")
-                return
-            logger.info(f"Found session ID: {session_id}")
+            logger.info("Step 1/5: Using hardcoded session ID for Iowa")
+            session_id = 937
+            logger.info(f"Using session ID: {session_id}")
             
             logger.info("Step 2/5: Checking API configuration")
             upvote_api_url = os.getenv('UPVOTE_API_BASE_URL')
@@ -264,20 +260,23 @@ class BillService:
             
             logger.info("Step 4/5: Checking for new bills")
             bill_numbers = [bill.bill_number for bill in bills]
-            new_bills = await BillService.check_for_bills(
-                bill_numbers,
-                session_id,
-                "IA"
-            )
+            new_bills = await BillService.check_for_bills(bill_numbers, session_id, "IA")
             
+            total_bills = len(bills)
             if not new_bills:
                 logger.info("No new bills found")
+                await SlackService.notify_bill_processing(
+                    total_bills=total_bills,
+                    new_bills=[],
+                    duplicate_count=total_bills
+                )
                 return
             
             logger.info(f"Step 5/5: Submitting {len(new_bills)} new bills to Upvote API")
             endpoint = f"{upvote_api_url}/internal/bills?api_key={upvote_api_key}"
             success_count = 0
             error_count = 0
+            submitted_new_bills = []
             
             async with aiohttp.ClientSession() as session:
                 for bill_number in new_bills:
@@ -287,6 +286,8 @@ class BillService:
                         manual_entry = {
                             "bill": {
                                 "state_code": "IA",
+                                "title": bill_data.bill_title,
+                                "summary": bill_data.bill_title,
                                 "bill_number": bill_number,
                                 "current_state": "introduced",
                                 "introduced_date": date.today().strftime("%Y-%m-%d"),
@@ -303,19 +304,20 @@ class BillService:
                             ) as response:
                                 response.raise_for_status()
                                 success_count += 1
+                                submitted_new_bills.append(bill_number)
                                 logger.info(f"Successfully submitted bill {bill_number}")
                         except Exception as e:
                             error_count += 1
                             logger.error(f"Error submitting bill {bill_number}: {str(e)}")
-
+            
             await SlackService.notify_bill_processing(
-                total_bills=len(bills),
-                new_bills=[b for b in new_bills if b in [bill.bill_number for bill in bills]]
+                total_bills=total_bills,
+                new_bills=submitted_new_bills,
+                duplicate_count=total_bills - len(submitted_new_bills)
             )
-
-            logger.info(f"=== Bill processing complete ===")
+            
+            logger.info("=== Bill processing complete ===")
             logger.info(f"Summary: {success_count} bills submitted successfully, {error_count} failures")
-
         except Exception as e:
             logger.error(f"Error in automated bill processing: {str(e)}")
             raise
