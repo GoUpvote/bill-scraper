@@ -171,7 +171,13 @@ class BillService:
         access_token = os.getenv("ACCESS_TOKEN")
         client = os.getenv("CLIENT")
         
-        logger.info(f"Using Upvote API URL: {upvote_api_url}")
+        # Add detailed environment variable logging
+        logger.info("Checking environment variables:")
+        logger.info(f"UPVOTE_API_BASE_URL: {'SET' if upvote_api_url else 'MISSING'}")
+        logger.info(f"UPVOTE_API_KEY: {'SET' if upvote_api_key else 'MISSING'}")
+        logger.info(f"UPVOTE_UID: {'SET' if upvote_uid else 'MISSING'}")
+        logger.info(f"ACCESS_TOKEN: {'SET' if access_token else 'MISSING'}")
+        logger.info(f"CLIENT: {'SET' if client else 'MISSING'}")
         
         if not upvote_api_url or not upvote_api_key or not upvote_uid or not access_token or not client:
             logger.error("Upvote API configuration is missing in environment variables")
@@ -248,23 +254,32 @@ class BillService:
         """
         logger.info("=== Starting bill processing job ===")
         try:
-            logger.info("Step 1/5: Using hardcoded session ID for Iowa")
+            logger.info("Step 1/6: Using hardcoded session ID for Iowa")
             session_id = 937
             logger.info(f"Using session ID: {session_id}")
             
-            logger.info("Step 2/5: Checking API configuration")
+            logger.info("Step 2/6: Checking API configuration")
             upvote_api_url = os.getenv('UPVOTE_API_BASE_URL')
             upvote_api_key = os.getenv('UPVOTE_API_KEY')
-            if not upvote_api_url or not upvote_api_key:
-                logger.error("UPVOTE_API configuration not found in environment")
+            upvote_uid = os.getenv("UPVOTE_UID")
+            access_token = os.getenv("ACCESS_TOKEN")
+            client = os.getenv("CLIENT")
+            
+            if not all([upvote_api_url, upvote_api_key, upvote_uid, access_token, client]):
+                logger.error("Missing required environment variables")
+                logger.info(f"UPVOTE_API_BASE_URL: {'SET' if upvote_api_url else 'MISSING'}")
+                logger.info(f"UPVOTE_API_KEY: {'SET' if upvote_api_key else 'MISSING'}")
+                logger.info(f"UPVOTE_UID: {'SET' if upvote_uid else 'MISSING'}")
+                logger.info(f"ACCESS_TOKEN: {'SET' if access_token else 'MISSING'}")
+                logger.info(f"CLIENT: {'SET' if client else 'MISSING'}")
                 return
             logger.info("API configuration validated")
             
-            logger.info("Step 3/5: Scraping bills from Iowa legislature website")
+            logger.info("Step 3/6: Scraping bills from Iowa legislature website")
             bills = await BillService.scrape_bills()
             logger.info(f"Found {len(bills)} total bills")
             
-            logger.info("Step 4/5: Checking for new bills")
+            logger.info("Step 4/6: Checking for new bills")
             bill_numbers = [bill.bill_number for bill in bills]
             new_bills = await BillService.check_for_bills(bill_numbers, session_id, "IA")
             
@@ -278,7 +293,7 @@ class BillService:
                 )
                 return
             
-            logger.info(f"Step 5/5: Submitting {len(new_bills)} new bills to Upvote API")
+            logger.info(f"Step 5/6: Submitting {len(new_bills)} new bills to Upvote API")
             endpoint = f"{upvote_api_url}/internal/bills?api_key={upvote_api_key}"
             success_count = 0
             error_count = 0
