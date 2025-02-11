@@ -167,13 +167,13 @@ class BillService:
         
         upvote_api_url = os.getenv('UPVOTE_API_BASE_URL')
         upvote_api_key = os.getenv('UPVOTE_API_KEY')
-        uid = os.getenv("UID")
+        upvote_uid = os.getenv("UPVOTE_UID")
         access_token = os.getenv("ACCESS_TOKEN")
         client = os.getenv("CLIENT")
         
         logger.info(f"Using Upvote API URL: {upvote_api_url}")
         
-        if not upvote_api_url or not upvote_api_key or not uid or not access_token or not client:
+        if not upvote_api_url or not upvote_api_key or not upvote_uid or not access_token or not client:
             logger.error("Upvote API configuration is missing in environment variables")
             # If configuration is missing, assume all bills are new
             return bill_numbers
@@ -189,7 +189,7 @@ class BillService:
                     bill_number,
                     upvote_api_url,
                     upvote_api_key,
-                    uid,
+                    upvote_uid,
                     access_token,
                     client
                 ))
@@ -210,7 +210,7 @@ class BillService:
 
     @staticmethod
     async def async_check_bill_exists(http_session: aiohttp.ClientSession, state_code: str, session_id: int, bill_number: str,
-                                      upvote_api_url: str, upvote_api_key: str, uid: str, access_token: str, client: str):
+                                      upvote_api_url: str, upvote_api_key: str, upvote_uid: str, access_token: str, client: str):
         endpoint = f"{upvote_api_url}/legible/bills/filter"
         params = {
             "state_code": state_code,
@@ -219,7 +219,7 @@ class BillService:
         }
         headers = {
             "Authorization": f"Bearer {upvote_api_key}",
-            "uid": uid,
+            "uid": upvote_uid,
             "access_token": access_token,
             "client": client
         }
