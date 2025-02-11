@@ -224,10 +224,16 @@ class BillService:
             "client": client
         }
         try:
-            logger.info(f"Checking bill {bill_number} with params: {params}")
+            logger.info(f"Checking bill {bill_number}")
+            logger.info(f"Endpoint: {endpoint}")
+            logger.info(f"Headers: {headers}")
+            logger.info(f"Params: {params}")
+            
             async with http_session.get(endpoint, params=params, headers=headers) as response:
                 response.raise_for_status()
                 result = await response.json()
+                logger.info(f"Response status: {response.status}")
+                logger.info(f"Response for bill {bill_number}: {result}")
                 return result
         except Exception as e:
             logger.error(f"Error checking bill {bill_number} existence via API: {str(e)}")
